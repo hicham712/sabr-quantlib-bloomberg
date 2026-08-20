@@ -33,7 +33,7 @@ app.layout = html.Div([
     html.Div(id="dataset-info"),
     html.Div([
         html.Label("Date"),
-        dcc.DatePickerSingle(id="date", display_format="YYYY-MM-DD"),
+        dcc.Dropdown(id="date", clearable=False),
         html.Label("Maturity"),
         dcc.Dropdown(id="maturity", clearable=False),
     ], style={"display": "grid", "gridTemplateColumns": "180px 220px", "gap": "8px 16px", "maxWidth": "450px"}),
@@ -46,87 +46,64 @@ app.layout = html.Div([
 
 
 @app.callback(
-    Output("date", "min_date_allowed"), Output("date", "max_date_allowed"),
-    Output("date", "date"), Output("dataset-info", "children"), Input("date", "date")
+    Output("date", "options"), Output("date", "value"), Output("dataset-info", "children"),
+    Input("date", "value")
 )
 def init_date(current):
     available = dates(load_data())
     if not available:
-        return None, None, None, "No historical dataset found."
+        return [], None, "No historical dataset found."
     selected = current if current in available else available[-1]
     payload = load_payload()
     frequency = payload.get("frequency", "weekly")
-    info = f"Dataset: {available[0]} → {available[-1]} | {frequency} | {len(available)} observations"
-    return available[0], available[-1], selected, info
+    info = f"Dataset: {available[0]} → {available[-1]} | {frequency} | {len(available)} calibration dates"
+    return [{"label": d, "value": d} for d in available], selected, info
 
 
-@app.callback(Output("maturity", "options"), Output("maturity", "value"), Input("date", "date"))
+@app.callback(Output("maturity", "options"), Output("maturity", "value"), Input("date", "value"))
 def update_maturity(selected_date):
-    records = load_data()
-    opts = maturity_options(records, selected_date)
+    opts = maturity_options(load_data(), selected_date)
     return [{"label": x, "value": x} for x in opts], (opts[0] if opts else None)
 
 
 @app.callback(
     Output("smile", "figure"), Output("alpha", "figure"), Output("beta", "figure"),
     Output("rho", "figure"), Output("nu", "figure"), Output("atm", "figure"), Output("atm-move", "figure"),
-    Input("date", "date"), Input("maturity", "value")
+    Input("date", "value"), Input("maturity", "value")
 )
 def update_graphs(selected_date, maturity):
     records = load_data()
     empty = go.Figure()
     if not selected_date or not maturity:
         return (empty,) * 7
-
     selected = next((r for r in records if r["date"] == selected_date and r["expiry"] == maturity), None)
     smile = go.Figure()
     if selected:
         q = selected["quotes"]
-        forward = float(selected["forward"])
-        expiry = float(selected["expiry_years"])
-        # Reconstruct the QuantLib SABR interpolation from the stored market
-        # quotes and explicitly include Bloomberg's ATM normal-vol point at 0 bp.
-        market_offsets = [float(x["offset_bp"]) for x in q]
-        market_vols = [float(x["market_normal_vol"]) for x in q]
-        if 0.0 not in market_offsets:
-            insert_at = next((i for i, x in enumerate(market_offsets) if x > 0.0), len(market_offsets))
-            market_offsets.insert(insert_at, 0.0)
-            market_vols.insert(insert_at, float(selected["atm_normal_vol"]))
-        strikes = [forward + offset / 10000.0 for offset in market_offsets]
-        fitted = calibrate_sabr(forward, expiry, strikes, market_vols, beta=float(selected["beta"]))
-
-        # Evaluate QuantLib directly at 0 bp and across the whole displayed range.
+        forward, expiry = float(selected["forward"]), float(selected["expiry_years"])
+        offsets = [float(x["offset_bp"]) for x in q]
+        vols = [float(x["market_normal_vol"]) for x in q]
+        if 0.0 not in offsets:
+            i = next((i for i, x in enumerate(offsets) if x > 0.0), len(offsets))
+            offsets.insert(i, 0.0)
+            vols.insert(i, float(selected["atm_normal_vol"]))
+        strikes = [forward + x / 10000.0 for x in offsets]
+        fitted = calibrate_sabr(forward, expiry, strikes, vols, beta=float(selected["beta"]))
         plot_offsets = list(range(-150, 151))
-        plot_vols = [fitted.volatility(forward + offset / 10000.0, False) * 10000.0 for offset in plot_offsets]
+        plot_vols = [fitted.volatility(forward + x / 10000.0, False) * 10000.0 for x in plot_offsets]
         fitted_atm = fitted.volatility(forward, False) * 10000.0
-
-        smile.add_trace(go.Scatter(
-            x=[x["offset_bp"] for x in q], y=[x["market_normal_vol"] * 10000 for x in q],
-            mode="markers", name="Bloomberg smile"
-        ))
-        smile.add_trace(go.Scatter(
-            x=[0], y=[selected["atm_normal_vol"] * 10000],
-            mode="markers", marker={"size": 9}, name="Bloomberg ATM"
-        ))
-        smile.add_trace(go.Scatter(
-            x=plot_offsets, y=plot_vols, mode="lines", name="QuantLib SABR"
-        ))
-        smile.add_trace(go.Scatter(
-            x=[0], y=[fitted_atm], mode="markers", marker={"size": 8}, name="QuantLib SABR ATM"
-        ))
-        smile.update_layout(
-            title=f"{selected_date} — {maturity} smile",
-            xaxis_title="Strike offset (bp)", yaxis_title="Normal volatility (bp)",
-        )
+        smile.add_trace(go.Scatter(x=[x["offset_bp"] for x in q], y=[x["market_normal_vol"] * 10000 for x in q], mode="markers", name="Bloomberg smile"))
+        smile.add_trace(go.Scatter(x=[0], y=[selected["atm_normal_vol"] * 10000], mode="markers", marker={"size": 9}, name="Bloomberg ATM"))
+        smile.add_trace(go.Scatter(x=plot_offsets, y=plot_vols, mode="lines", name="QuantLib SABR"))
+        smile.add_trace(go.Scatter(x=[0], y=[fitted_atm], mode="markers", marker={"size": 8}, name="QuantLib SABR ATM"))
+        smile.update_layout(title=f"{selected_date} — {maturity} smile", xaxis_title="Strike offset (bp)", yaxis_title="Normal volatility (bp)")
 
     history = sorted((r for r in records if r["expiry"] == maturity), key=lambda r: r["date"])
     x = [r["date"] for r in history]
-
-    def parameter_figure(name: str, title: str):
+    def parameter_figure(name, title):
         fig = go.Figure(go.Scatter(x=x, y=[r[name] for r in history], mode="lines+markers", name=name))
         fig.update_layout(title=title, xaxis_title="Date", yaxis_title=name)
         return fig
-
     alpha = parameter_figure("alpha", f"{maturity} — α")
     beta = parameter_figure("beta", f"{maturity} — β")
     rho = parameter_figure("rho", f"{maturity} — ρ")
