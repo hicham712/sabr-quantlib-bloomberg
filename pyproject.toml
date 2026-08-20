@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sabr-quantlib-bloomberg"
+version = "0.1.0"
+description = "Bloomberg ENS swaption smiles and QuantLib SABR calibration"
+requires-python = ">=3.10"
+dependencies = ["QuantLib", "blpapi"]
+
+[tool.setuptools.packages.find]
+include = ["src", "src.*", "scripts", "scripts.*"]
