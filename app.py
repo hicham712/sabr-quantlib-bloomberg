@@ -1,6 +1,7 @@
 """Small Dash UI for historical Bloomberg SABR smiles."""
 from __future__ import annotations
 import json
+from datetime import date
 from pathlib import Path
 import plotly.graph_objects as go
 from dash import Dash, Input, Output, dcc, html
@@ -28,15 +29,18 @@ def maturity_options(records, selected_date):
     return sorted({r["expiry"] for r in records if r["date"] == selected_date}, key=lambda x: float(x[:-1]))
 
 
+def pct_param(name, value):
+    return float(value) * 100.0
+
+
 app.layout = html.Div([
     html.H2("Bloomberg Normal SABR Smile"),
     html.Div(id="dataset-info"),
     html.Div([
-        html.Label("Date"),
-        dcc.Dropdown(id="date", clearable=False),
-        html.Label("Maturity"),
-        dcc.Dropdown(id="maturity", clearable=False),
+        html.Label("Date"), dcc.Dropdown(id="date", clearable=False),
+        html.Label("Maturity"), dcc.Dropdown(id="maturity", clearable=False),
     ], style={"display": "grid", "gridTemplateColumns": "180px 220px", "gap": "8px 16px", "maxWidth": "450px"}),
+    html.Div(id="parameter-table"),
     dcc.Graph(id="smile"),
     html.Div([
         dcc.Graph(id="alpha"), dcc.Graph(id="beta"), dcc.Graph(id="rho"),
@@ -45,10 +49,7 @@ app.layout = html.Div([
 ])
 
 
-@app.callback(
-    Output("date", "options"), Output("date", "value"), Output("dataset-info", "children"),
-    Input("date", "value")
-)
+@app.callback(Output("date", "options"), Output("date", "value"), Output("dataset-info", "children"), Input("date", "value"))
 def init_date(current):
     available = dates(load_data())
     if not available:
@@ -66,11 +67,37 @@ def update_maturity(selected_date):
     return [{"label": x, "value": x} for x in opts], (opts[0] if opts else None)
 
 
-@app.callback(
-    Output("smile", "figure"), Output("alpha", "figure"), Output("beta", "figure"),
-    Output("rho", "figure"), Output("nu", "figure"), Output("atm", "figure"), Output("atm-move", "figure"),
-    Input("date", "value"), Input("maturity", "value")
-)
+@app.callback(Output("parameter-table", "children"), Input("date", "value"), Input("maturity", "value"))
+def update_parameter_table(selected_date, maturity):
+    records = sorted((r for r in load_data() if r["expiry"] == maturity), key=lambda r: r["date"])
+    if not selected_date or not maturity or not records:
+        return html.Div()
+    available = [r["date"] for r in records]
+    target = date.fromisoformat(selected_date)
+    def nearest_at_or_before(days):
+        cutoff = target.fromordinal(target.toordinal() - days)
+        eligible = [d for d in available if date.fromisoformat(d) <= cutoff]
+        return eligible[-1] if eligible else None
+    periods = [("Selected", selected_date), ("Last week", nearest_at_or_before(7)), ("Last month", nearest_at_or_before(30))]
+    rows = []
+    for label, d in periods:
+        r = next((x for x in records if x["date"] == d), None)
+        if r:
+            rows.append(html.Tr([
+                html.Td(label), html.Td(d),
+                html.Td(f"{pct_param('alpha', r['alpha']):.3f}%"),
+                html.Td(f"{pct_param('beta', r['beta']):.3f}%"),
+                html.Td(f"{pct_param('rho', r['rho']):.3f}%"),
+                html.Td(f"{pct_param('nu', r['nu']):.3f}%"),
+                html.Td(f"{float(r['atm_normal_vol']) * 10000:.2f} bp"),
+            ]))
+    return html.Table([
+        html.Thead(html.Tr([html.Th(x) for x in ["Period", "Calibration date", "α", "β", "ρ", "ν", "ATM"]])),
+        html.Tbody(rows)
+    ], style={"width": "100%", "borderCollapse": "collapse", "margin": "18px 0", "textAlign": "right"})
+
+
+@app.callback(Output("smile", "figure"), Output("alpha", "figure"), Output("beta", "figure"), Output("rho", "figure"), Output("nu", "figure"), Output("atm", "figure"), Output("atm-move", "figure"), Input("date", "value"), Input("maturity", "value"))
 def update_graphs(selected_date, maturity):
     records = load_data()
     empty = go.Figure()
@@ -101,8 +128,8 @@ def update_graphs(selected_date, maturity):
     history = sorted((r for r in records if r["expiry"] == maturity), key=lambda r: r["date"])
     x = [r["date"] for r in history]
     def parameter_figure(name, title):
-        fig = go.Figure(go.Scatter(x=x, y=[r[name] for r in history], mode="lines+markers", name=name))
-        fig.update_layout(title=title, xaxis_title="Date", yaxis_title=name)
+        fig = go.Figure(go.Scatter(x=x, y=[pct_param(name, r[name]) for r in history], mode="lines+markers", name=name))
+        fig.update_layout(title=title, xaxis_title="Date", yaxis_title="Parameter (%)")
         return fig
     alpha = parameter_figure("alpha", f"{maturity} — α")
     beta = parameter_figure("beta", f"{maturity} — β")
