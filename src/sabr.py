@@ -17,12 +17,7 @@ class SABRParameters:
 
 
 class SABRSmile:
-    def __init__(
-        self,
-        interpolation: ql.SABRInterpolation,
-        strikes: Sequence[float],
-        volatilities: Sequence[float],
-    ):
+    def __init__(self, interpolation: ql.SABRInterpolation, strikes: Sequence[float], volatilities: Sequence[float]):
         self._interpolation = interpolation
         self._strikes = tuple(float(x) for x in strikes)
         self._volatilities = tuple(float(x) for x in volatilities)
@@ -45,18 +40,12 @@ class SABRSmile:
 
     @property
     def rms_error(self) -> float:
-        """RMS calibration error computed from the exposed Python API."""
-        errors = [self.volatility(k, allow_extrapolation=False) - v
-                  for k, v in zip(self._strikes, self._volatilities)]
+        errors = [self.volatility(k, False) - v for k, v in zip(self._strikes, self._volatilities)]
         return float(sum(e * e for e in errors) / len(errors)) ** 0.5
 
     @property
     def max_error(self) -> float:
-        """Maximum absolute calibration error computed from the exposed API."""
-        return max(
-            abs(self.volatility(k, allow_extrapolation=False) - v)
-            for k, v in zip(self._strikes, self._volatilities)
-        )
+        return max(abs(self.volatility(k, False) - v) for k, v in zip(self._strikes, self._volatilities))
 
     @property
     def parameters(self) -> SABRParameters:
@@ -66,14 +55,16 @@ class SABRSmile:
         return float(self._interpolation(strike, allow_extrapolation))
 
 
-def _shifted_lognormal_volatility_type():
+def _normal_volatility_type():
+    """Return the Normal volatility enum exposed by the installed QuantLib-SWIG."""
     volatility_type = getattr(ql, "VolatilityType", None)
-    if volatility_type is not None and hasattr(volatility_type, "ShiftedLognormal"):
-        return volatility_type.ShiftedLognormal
-    shifted = getattr(ql, "ShiftedLognormal", None)
-    if shifted is not None:
-        return shifted
-    return None
+    if volatility_type is not None and hasattr(volatility_type, "Normal"):
+        return volatility_type.Normal
+    normal = getattr(ql, "Normal", None)
+    if normal is not None:
+        return normal
+    # QuantLib's VolatilityType enum is Normal=0, ShiftedLognormal=1.
+    return 0
 
 
 def calibrate_sabr(
@@ -88,6 +79,7 @@ def calibrate_sabr(
     vega_weighted: bool = True,
     error_accept: float = 1.0e-8,
 ) -> SABRSmile:
+    """Calibrate SABR to Bloomberg normal-volatility smile quotes."""
     if forward <= 0.0 or expiry <= 0.0:
         raise ValueError("forward and expiry must be positive")
     if len(strikes) != len(volatilities) or len(strikes) < 3:
@@ -107,10 +99,7 @@ def calibrate_sabr(
         float(alpha), float(beta), float(nu), float(rho),
         False, True, False, False, bool(vega_weighted),
         end_criteria, None, float(error_accept), False, 100, 0.0,
+        _normal_volatility_type(),
     ]
-    volatility_type = _shifted_lognormal_volatility_type()
-    if volatility_type is not None:
-        args.append(volatility_type)
-
     interpolation = ql.SABRInterpolation(*args)
     return SABRSmile(interpolation, strikes, volatilities)
