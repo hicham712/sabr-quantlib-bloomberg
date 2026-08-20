@@ -5,14 +5,18 @@ from pathlib import Path
 import plotly.graph_objects as go
 from dash import Dash, Input, Output, dcc, html
 
-DATA_FILE = Path("output/historical_sabr.json")
+DATA_FILE = Path("output/historical_sabr_5y_weekly.json")
 app = Dash(__name__)
 
 
-def load_data():
+def load_payload():
     if not DATA_FILE.exists():
-        return []
-    return json.loads(DATA_FILE.read_text(encoding="utf-8"))["nodes"]
+        return {"nodes": []}
+    return json.loads(DATA_FILE.read_text(encoding="utf-8"))
+
+
+def load_data():
+    return load_payload().get("nodes", [])
 
 
 def dates(records):
@@ -25,6 +29,7 @@ def maturity_options(records, selected_date):
 
 app.layout = html.Div([
     html.H2("Bloomberg Normal SABR Smile"),
+    html.Div(id="dataset-info"),
     html.Div([
         html.Label("Date"),
         dcc.DatePickerSingle(id="date", display_format="YYYY-MM-DD"),
@@ -43,13 +48,20 @@ app.layout = html.Div([
 ])
 
 
-@app.callback(Output("date", "min_date_allowed"), Output("date", "max_date_allowed"), Output("date", "date"), Input("date", "date"))
+@app.callback(
+    Output("date", "min_date_allowed"), Output("date", "max_date_allowed"),
+    Output("date", "date"), Output("dataset-info", "children"),
+    Input("date", "date")
+)
 def init_date(current):
     available = dates(load_data())
     if not available:
-        return None, None, None
+        return None, None, None, "No historical dataset found."
     selected = current if current in available else available[-1]
-    return available[0], available[-1], selected
+    payload = load_payload()
+    frequency = payload.get("frequency", "weekly")
+    info = f"Dataset: {available[0]} → {available[-1]} | {frequency} | {len(available)} observations"
+    return available[0], available[-1], selected, info
 
 
 @app.callback(Output("maturity", "options"), Output("maturity", "value"), Input("date", "date"))
