@@ -55,20 +55,13 @@ class SABRSmile:
 
 
 def _shifted_lognormal_volatility_type():
-    """Return the enum exposed by the installed QuantLib Python bindings.
-
-    QuantLib wheels have exposed this enum under different namespaces across
-    releases. Prefer ``VolatilityType`` when available and fall back to the
-    legacy ``VolatilityType.ShiftedLognormal`` location if necessary.
-    """
+    """Return the shifted-lognormal enum exposed by the installed bindings."""
     volatility_type = getattr(ql, "VolatilityType", None)
     if volatility_type is not None and hasattr(volatility_type, "ShiftedLognormal"):
         return volatility_type.ShiftedLognormal
     shifted = getattr(ql, "ShiftedLognormal", None)
     if shifted is not None:
         return shifted
-    # Recent QuantLib wheels expose the SABR interpolation volatility type as
-    # a plain enum value accepted by the final constructor argument.
     return 0
 
 
@@ -106,6 +99,6 @@ def calibrate_sabr(
         end_criteria, None, float(error_accept), False, 100, 0.0,
         _shifted_lognormal_volatility_type(),
     )
-    interpolation.enableExtrapolation()
-    interpolation.update()
+    # QuantLib-SWIG performs calibration during construction. The Python
+    # wrapper does not expose enableExtrapolation() or update() on this object.
     return SABRSmile(interpolation)
