@@ -5,5 +5,6 @@
   "field": "PX_LAST",
   "index": "IIRO",
   "yellow_key": "Curncy",
+  "forward_security_template": "EUSA01{years:02d} BGN Curncy",
   "maturity_years": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 20, 25, 30]
 }
