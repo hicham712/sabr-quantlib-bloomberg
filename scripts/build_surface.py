@@ -1,4 +1,4 @@
-"""Fetch Bloomberg smiles, convert vol add-ons and calibrate SABR."""
+"""Fetch Bloomberg smiles, convert normal-vol add-ons and calibrate SABR."""
 from __future__ import annotations
 import argparse, json
 from pathlib import Path
@@ -35,18 +35,18 @@ def main() -> None:
                 print(f"{expiry:>4}: skipped — forward={forward!r}, ATM={atm!r}")
                 continue
             valid = absolute_volatilities(float(atm), raw_addons)
-            print(f"{expiry:>4}  F={float(forward):.8f}  ATM={float(atm):.6f}%  quotes={len(valid)}/8")
-            print("       offset(bp)  add-on(%)  abs-vol(%)")
+            print(f"{expiry:>4}  F={float(forward):.8f}  ATM={float(atm):.4f} bp  quotes={len(valid)}/8")
+            print("       offset(bp)  add-on(bp)  abs-normal-vol(bp)")
             for offset in sorted(valid):
                 addon = raw_addons[offset]
-                print(f"       {offset:>10.0f}  {float(addon):>9.4f}  {100.0*valid[offset]:>10.4f}")
+                print(f"       {offset:>10.0f}  {float(addon):>10.4f}  {10_000.0*valid[offset]:>18.4f}")
             strikes, vols = available_smile_points(float(forward), raw_addons, float(atm))
             if len(strikes) < 3:
                 print("       skipped: fewer than 3 valid quotes")
                 continue
             smile = calibrate_sabr(float(forward), float(y), strikes, vols, beta=0.5)
             p = smile.parameters
-            print(f"       SABR: alpha={p.alpha:.8f} beta={p.beta:.4f} rho={p.rho:.6f} nu={p.nu:.6f} rms={smile.rms_error:.3e}")
+            print(f"       SABR-Normal: alpha={p.alpha:.8f} beta={p.beta:.4f} rho={p.rho:.6f} nu={p.nu:.6f} rms={smile.rms_error:.3e}")
 
 if __name__ == "__main__":
     main()
