@@ -1,9 +1,4 @@
-"""Bloomberg Desktop API data access.
-
-The client uses the synchronous BLPAPI Session/ReferenceDataRequest pattern.
-Security identifiers are deliberately supplied by configuration rather than
-hard-coded: Bloomberg security naming varies by currency/index and market.
-"""
+"""Bloomberg Desktop API access for ENS swaption smiles."""
 
 from __future__ import annotations
 
@@ -17,8 +12,6 @@ from .surface import BLOOMBERG_FIELDS
 
 @dataclass(frozen=True)
 class BloombergQuoteSet:
-    """Bloomberg data for one swaption maturity."""
-
     security: str
     expiry: str
     forward: float
@@ -56,7 +49,6 @@ class BloombergClient:
         self.stop()
 
     def reference_data(self, securities: Iterable[str], fields: Iterable[str]) -> dict[str, dict[str, object]]:
-        """Request reference data and return security -> field -> value."""
         if self._service is None:
             raise RuntimeError("Bloomberg session is not started")
 
@@ -70,7 +62,6 @@ class BloombergClient:
 
         self._session.sendRequest(request)
         result: dict[str, dict[str, object]] = {}
-
         while True:
             event = self._session.nextEvent()
             for message in event:
@@ -107,31 +98,31 @@ class BloombergClient:
     def fetch_smile(
         self,
         expiry: str,
-        swaption_security: str,
+        ens_securities: Mapping[float, str],
         forward_security: str,
-        forward_field: str,
+        forward_field: str = "PX_LAST",
+        quote_field: str = "PX_LAST",
     ) -> BloombergQuoteSet | None:
-        """Fetch forward plus ENSH..ENSQ quotes for one maturity.
+        """Fetch the forward and one PX_LAST quote from each ENS security."""
+        if set(ens_securities) - set(BLOOMBERG_FIELDS):
+            raise ValueError("ens_securities contains an unsupported strike offset")
 
-        The forward is intentionally sourced from a separate security/field:
-        the project convention is ATM-forward swap data, not a swaption quote.
-        """
-        fields = [forward_field, *BLOOMBERG_FIELDS.values()]
-        data = self.reference_data([swaption_security, forward_security], fields)
+        securities = [forward_security, *ens_securities.values()]
+        data = self.reference_data(securities, [forward_field, quote_field])
         forward_value = data.get(forward_security, {}).get(forward_field)
         if not isinstance(forward_value, (int, float)) or forward_value <= 0.0:
             return None
 
         quotes: dict[float, float] = {}
-        for offset_bp, field in BLOOMBERG_FIELDS.items():
-            value = data.get(swaption_security, {}).get(field)
+        for offset_bp, security in ens_securities.items():
+            value = data.get(security, {}).get(quote_field)
             if isinstance(value, (int, float)) and value > 0.0:
                 quotes[offset_bp] = float(value)
         if len(quotes) < 3:
             return None
 
         return BloombergQuoteSet(
-            security=swaption_security,
+            security=next(iter(ens_securities.values())),
             expiry=expiry,
             forward=float(forward_value),
             quotes_by_offset_bp=quotes,

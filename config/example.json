@@ -1,10 +1,8 @@
 {
   "forward_field": "PX_LAST",
-  "maturities": [
-    {
-      "expiry": "5Y",
-      "swaption_security": "ENSI0F05 IIRO Curncy",
-      "forward_security": "REPLACE_WITH_BLOOMBERG_5Y_FORWARD_SWAP_SECURITY"
-    }
-  ]
+  "quote_field": "PX_LAST",
+  "index": "IIRO",
+  "yellow_key": "Curncy",
+  "maturity_years": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 20, 25, 30],
+  "forward_security_template": "REPLACE_WITH_BLOOMBERG_{years}Y_FORWARD_SWAP_SECURITY"
 }
