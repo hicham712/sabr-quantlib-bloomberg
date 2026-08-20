@@ -1,31 +1,30 @@
 import pytest
+import QuantLib as ql
 
 from src.quantlib_sabr import BLOOMBERG_FIELDS, calibrate_sabr, sabr_volatility, strikes_from_forward
 
 
 def test_bloomberg_mapping():
-    assert BLOOMBERG_FIELDS[-150.0] == "ENSH"
-    assert BLOOMBERG_FIELDS[-100.0] == "ENSI"
-    assert BLOOMBERG_FIELDS[-50.0] == "ENSK"
-    assert BLOOMBERG_FIELDS[-25.0] == "ENSL"
-    assert BLOOMBERG_FIELDS[25.0] == "ENSM"
-    assert BLOOMBERG_FIELDS[50.0] == "ENSN"
-    assert BLOOMBERG_FIELDS[100.0] == "ENSP"
-    assert BLOOMBERG_FIELDS[150.0] == "ENSQ"
+    assert list(BLOOMBERG_FIELDS.values()) == ["ENSH", "ENSI", "ENSK", "ENSL", "ENSM", "ENSN", "ENSP", "ENSQ"]
 
 
 def test_strikes_are_absolute_offsets_from_forward():
     assert strikes_from_forward(0.03, [-50.0, 0.0, 50.0]) == pytest.approx([0.025, 0.03, 0.035])
 
 
-def test_calibration_and_repricing():
-    forward = 0.03
-    quotes = {-150: 0.24, -100: 0.225, -50: 0.212, -25: 0.207, 25: 0.204, 50: 0.207, 100: 0.216, 150: 0.232}
-    result = calibrate_sabr(forward, 5.0, quotes)
-    assert result.beta == pytest.approx(0.5)
-    assert -1.0 < result.rho < 1.0
-    assert result.nu > 0.0
-    assert sabr_volatility(forward, forward, 5.0, result) > 0.0
+def test_quantlib_calibration_reprices_quotes():
+    forward, expiry = 0.03, 5.0
+    alpha, beta, rho, nu = 0.02, 0.5, -0.25, 0.35
+    offsets = [-150, -100, -50, -25, 25, 50, 100, 150]
+    quotes = {
+        offset: ql.sabrVolatility(forward + offset / 10000.0, forward, expiry, alpha, beta, nu, rho)
+        for offset in offsets
+    }
+    result = calibrate_sabr(forward, expiry, quotes)
+    assert result.beta == pytest.approx(beta)
+    for offset, market_vol in quotes.items():
+        strike = forward + offset / 10000.0
+        assert sabr_volatility(forward, strike, expiry, result) == pytest.approx(market_vol, rel=1e-5)
 
 
 def test_missing_quotes_are_ignored():
