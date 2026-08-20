@@ -23,19 +23,20 @@ class BloombergHistoryClient:
 
     @staticmethod
     def _date_string(value) -> str:
-        if isinstance(value, datetime):
-            value = value.date()
-        if isinstance(value, date):
-            return value.isoformat()
+        if isinstance(value, datetime): value = value.date()
+        if isinstance(value, date): return value.isoformat()
         return str(value).split("T", 1)[0]
 
-    def historical(self, securities: Iterable[str], field: str, start: date, end: date) -> dict[str, dict[str, float]]:
+    def historical(self, securities: Iterable[str], field: str, start: date, end: date, periodicity: str = "DAILY") -> dict[str, dict[str, float]]:
+        periodicity = periodicity.upper()
+        if periodicity not in {"DAILY", "WEEKLY", "MONTHLY"}:
+            raise ValueError("periodicity must be DAILY, WEEKLY, or MONTHLY")
         service = self._session.getService("//blp/refdata")
         request = service.createRequest("HistoricalDataRequest")
         for security in dict.fromkeys(securities): request.getElement("securities").appendValue(security)
         request.getElement("fields").appendValue(field)
         request.set("startDate", start.strftime("%Y%m%d")); request.set("endDate", end.strftime("%Y%m%d"))
-        request.set("periodicitySelection", "DAILY")
+        request.set("periodicitySelection", periodicity)
         self._session.sendRequest(request)
         result: dict[str, dict[str, float]] = {}
         while True:
