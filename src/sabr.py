@@ -53,9 +53,7 @@ class SABRSmile:
     def volatility(self, strike: float, allow_extrapolation: bool = False) -> float:
         return float(self._interpolation(strike, allow_extrapolation))
 
-    def strikes_volatilities(
-        self, strikes: Sequence[float]
-    ) -> list[float]:
+    def strikes_volatilities(self, strikes: Sequence[float]) -> list[float]:
         return [self.volatility(strike) for strike in strikes]
 
 
@@ -93,8 +91,9 @@ def calibrate_sabr(
         raise ValueError("all volatilities must be positive")
 
     if alpha is None:
-        # A stable initial alpha estimate from the quote nearest the forward.
-        atm_vol = float(volatilities[min(range(len(strikes)), key=lambda i: abs(strikes[i] - forward))])
+        atm_vol = float(
+            volatilities[min(range(len(strikes)), key=lambda i: abs(strikes[i] - forward))]
+        )
         alpha = max(atm_vol * forward ** (1.0 - beta), 1.0e-8)
 
     end_criteria = ql.EndCriteria(1000, 100, 1.0e-10, 1.0e-10, 1.0e-10)
@@ -118,7 +117,7 @@ def calibrate_sabr(
         False,
         100,
         0.0,
-        ql.ShiftedLognormal,
+        ql.VolatilityType.ShiftedLognormal,
     )
     interpolation.enableExtrapolation()
     interpolation.update()
