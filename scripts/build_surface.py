@@ -23,12 +23,13 @@ def main() -> None:
     index = config["index"]
     yellow_key = config.get("yellow_key", "Curncy")
     years = config.get("maturity_years", list(range(1, 31)))
+    forward_template = config.get("forward_security_template", "EUSA01{years:02d} BGN Curncy")
     universe = build_ens_universe(years, index, yellow_key)
     with BloombergDesktopClient(host=args.host, port=args.port, timeout_ms=int(config.get("timeout_ms", 10000))) as bloomberg:
         for years_value in years:
             expiry = f"{years_value}Y"
             ens_securities = [item.ticker for item in universe[years_value]]
-            forward_security = config["forward_security_template"].format(years=years_value)
+            forward_security = forward_template.format(years=years_value)
             values = bloomberg.get(ens_securities + [forward_security], field)
             forward = values.get(forward_security)
             quotes_by_offset = {item.offset_bp: values.get(item.ticker) for item in universe[years_value]}
