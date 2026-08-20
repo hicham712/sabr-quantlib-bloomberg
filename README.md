@@ -17,4 +17,10 @@ The ATM reference is the forward swap rate. Bloomberg smile tickers are absolute
 | +100 bp | ENSP |
 | +150 bp | ENSQ |
 
-Beta is fixed to 0.5 initially. Missing quotes are allowed when enough points remain for calibration.
+For an ATM-forward rate `F`, a quote at offset `x` bp is converted to `K = F + x / 10000`.
+
+## SABR
+
+The implementation uses QuantLib's `SABRInterpolation` for calibration and `sabrVolatility` for evaluation. Beta is fixed at 0.5 initially; alpha, rho and nu are calibrated. Missing Bloomberg quotes are ignored, with at least three valid smile points required.
+
+QuantLib-Python can be installed on Windows from PyPI with `python -m pip install QuantLib`.
