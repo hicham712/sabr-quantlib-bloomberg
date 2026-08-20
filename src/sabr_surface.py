@@ -5,7 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence
 
-from .sabr import SABRParameters, SABRSmile, calibrate_sabr
+import QuantLib as ql
+
+from .sabr import SABRParameters
 
 
 @dataclass(frozen=True)
@@ -18,12 +20,11 @@ class SABRNode:
 class SABRSurface:
     """Interpolate calibrated normal-SABR nodes in maturity.
 
-    No maturity extrapolation is allowed: queries must lie between the
-    shortest and longest calibrated nodes. Strike extrapolation is delegated
-    to the QuantLib SABR interpolation only when explicitly requested.
+    Maturity extrapolation is rejected. Strike evaluation uses QuantLib's
+    closed-form SABR normal-volatility implementation.
     """
 
-    def __init__(self, nodes: Sequence[SABRNode], smiles: Sequence[SABRSmile] | None = None):
+    def __init__(self, nodes: Sequence[SABRNode]):
         if not nodes:
             raise ValueError("at least one SABR node is required")
         ordered = sorted(nodes, key=lambda n: n.expiry)
@@ -32,7 +33,6 @@ class SABRSurface:
         if any(a.expiry == b.expiry for a, b in zip(ordered, ordered[1:])):
             raise ValueError("node expiries must be unique")
         self._nodes = tuple(ordered)
-        self._smiles = tuple(smiles) if smiles is not None else None
 
     @property
     def nodes(self) -> tuple[SABRNode, ...]:
@@ -54,41 +54,48 @@ class SABRSurface:
             return ys[0]
         for i in range(len(xs) - 1):
             if xs[i] <= x <= xs[i + 1]:
-                if xs[i] == xs[i + 1]:
-                    return ys[i]
                 w = (x - xs[i]) / (xs[i + 1] - xs[i])
                 return ys[i] + w * (ys[i + 1] - ys[i])
         return ys[-1]
 
     def parameters(self, expiry: float) -> SABRParameters:
         xs = [n.expiry for n in self._nodes]
-        alpha = self._interp(expiry, xs, [n.parameters.alpha for n in self._nodes])
-        beta = self._interp(expiry, xs, [n.parameters.beta for n in self._nodes])
-        rho = self._interp(expiry, xs, [n.parameters.rho for n in self._nodes])
-        nu = self._interp(expiry, xs, [n.parameters.nu for n in self._nodes])
-        return SABRParameters(alpha, beta, rho, nu)
+        return SABRParameters(
+            self._interp(expiry, xs, [n.parameters.alpha for n in self._nodes]),
+            self._interp(expiry, xs, [n.parameters.beta for n in self._nodes]),
+            self._interp(expiry, xs, [n.parameters.rho for n in self._nodes]),
+            self._interp(expiry, xs, [n.parameters.nu for n in self._nodes]),
+        )
 
     def forward(self, expiry: float) -> float:
         return self._interp(expiry, [n.expiry for n in self._nodes], [n.forward for n in self._nodes])
 
+    @staticmethod
+    def _normal_type():
+        vt = getattr(ql, "VolatilityType", None)
+        if vt is not None and hasattr(vt, "Normal"):
+            return vt.Normal
+        normal = getattr(ql, "Normal", None)
+        if normal is not None:
+            return normal
+        return 0
+
     def volatility(self, expiry: float, strike: float, allow_strike_extrapolation: bool = False) -> float:
-        """Return normal SABR volatility at arbitrary expiry/strike."""
+        """Return normal SABR volatility at arbitrary expiry and strike."""
         if strike <= 0.0:
             raise ValueError("strike must be positive")
-        fwd = self.forward(expiry)
+        forward = self.forward(expiry)
         p = self.parameters(expiry)
-        # Reconstruct a QuantLib SABR interpolation for the requested
-        # maturity. This uses the same normal-vol convention as calibration.
-        atm = p.alpha / (fwd ** (1.0 - p.beta))
-        smile = calibrate_sabr(
-            fwd,
-            expiry,
-            [fwd],
-            [atm],
-            beta=p.beta,
-            alpha=p.alpha,
-            rho=p.rho,
-            nu=p.nu,
-            vega_weighted=False,
-        )
-        return smile.volatility(strike, allow_strike_extrapolation)
+        # QuantLib-SWIG exposes the SABR formula directly. Its volatility-type
+        # argument selects the same Normal convention used for calibration.
+        try:
+            return float(ql.sabrVolatility(
+                strike, forward, expiry,
+                p.alpha, p.beta, p.nu, p.rho,
+                self._normal_type(),
+            ))
+        except TypeError:
+            raise RuntimeError("installed QuantLib binding does not expose normal sabrVolatility") from None
+
+    def parameters_at_grid(self, expiries: Sequence[float]) -> list[tuple[float, float, SABRParameters]]:
+        return [(float(t), self.forward(float(t)), self.parameters(float(t))) for t in expiries]
