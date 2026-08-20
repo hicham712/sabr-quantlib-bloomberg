@@ -21,14 +21,8 @@ For an ATM-forward rate `F`, a quote at offset `x` bp is converted to `K = F + x
 
 ## SABR calibration
 
-The implementation delegates SABR calibration and implied-volatility evaluation to QuantLib's `SABRInterpolation` and `sabrVolatility`. Beta is fixed at 0.5 initially; alpha, rho and nu are calibrated. Missing Bloomberg quotes are ignored, with at least three valid smile points required.
+QuantLib's documented `SABRInterpolation` performs the calibration and `sabrVolatility` evaluates the fitted smile. Beta is fixed at 0.5 initially; alpha, rho and nu are calibrated. Missing Bloomberg quotes are ignored, with at least three valid smile points required.
 
 ## Windows
 
-Install the QuantLib Python wheel with:
-
-```powershell
-python -m pip install QuantLib
-```
-
-The Bloomberg Desktop API layer is kept separate so it can enumerate all available maturities and retrieve the forward plus the available `ENS*` smile tickers before passing them to the calibration engine.
+Install the QuantLib Python wheel with `python -m pip install QuantLib`. The Bloomberg Desktop API layer is kept separate so it can enumerate all available maturities and retrieve the forward plus the available `ENS*` smile tickers before passing them to this calibration engine.
