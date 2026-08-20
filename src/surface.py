@@ -24,11 +24,7 @@ def strikes_from_forward(forward: float) -> list[float]:
     return [forward + offset / 10_000.0 for offset in STRIKE_OFFSETS_BP]
 
 def absolute_volatilities(atm_vol_bp: float, quotes_by_offset_bp: Mapping[float, float | None]) -> dict[float, float]:
-    """Convert Bloomberg normal-vol ATM and ENS add-ons from bp to rate units.
-
-    Both ENPS (ATM) and ENS smile values are normal volatilities quoted in bp.
-    For example, ATM=77.4 and ENS=-3.21 gives 74.19 bp = 0.007419 in rate units.
-    """
+    """Convert Bloomberg normal-vol ATM and ENS add-ons from bp to rate units."""
     if atm_vol_bp is None or atm_vol_bp <= 0.0:
         raise ValueError("ATM normal volatility must be positive")
     result = {}
@@ -42,12 +38,14 @@ def absolute_volatilities(atm_vol_bp: float, quotes_by_offset_bp: Mapping[float,
     return result
 
 def available_smile_points(forward: float, quotes_by_offset_bp: Mapping[float, float | None], atm_vol_bp: float | None = None) -> tuple[list[float], list[float]]:
+    """Return calibration points including Bloomberg's explicit ATM point at 0 bp."""
     if forward <= 0.0:
         raise ValueError("forward must be positive")
-    if atm_vol_bp is None:
+    if atm_vol_bp is None or atm_vol_bp <= 0.0:
         raise ValueError("atm_vol_bp is required for ENS normal-vol add-ons")
     absolute = absolute_volatilities(atm_vol_bp, quotes_by_offset_bp)
-    points = [(forward + offset / 10_000.0, absolute[offset]) for offset in STRIKE_OFFSETS_BP if offset in absolute and forward + offset / 10_000.0 > 0.0]
+    points = [(forward + offset / 10_000.0, vol) for offset, vol in absolute.items() if forward + offset / 10_000.0 > 0.0]
+    points.append((forward, float(atm_vol_bp) / 10_000.0))
     points.sort(key=lambda item: item[0])
     return [p[0] for p in points], [p[1] for p in points]
 
