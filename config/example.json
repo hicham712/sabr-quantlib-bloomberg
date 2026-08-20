@@ -4,5 +4,5 @@
   "index": "IIRO",
   "yellow_key": "Curncy",
   "maturity_years": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 20, 25, 30],
-  "forward_security_template": "REPLACE_WITH_BLOOMBERG_{years}Y_FORWARD_SWAP_SECURITY"
+  "forward_security_template": "EUSA01{years:02d} BGN Curncy"
 }
