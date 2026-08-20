@@ -1,0 +1,10 @@
+{
+  "forward_field": "PX_LAST",
+  "maturities": [
+    {
+      "expiry": "1Y",
+      "swaption_security": "REPLACE_WITH_BLOOMBERG_SWAPTION_SECURITY",
+      "forward_security": "REPLACE_WITH_BLOOMBERG_SWAP_SECURITY"
+    }
+  ]
+}
