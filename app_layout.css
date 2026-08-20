@@ -1,0 +1,2 @@
+/* Visual layout helpers for the trading-style Dash interface. */
+.app-shell{min-height:100vh}.header{display:flex;justify-content:space-between;align-items:flex-end}.controls{justify-content:flex-start}.control .Select-control{border-radius:8px;border-color:#d8dde5}.section-title{display:flex;align-items:center;justify-content:space-between}.chart-card .dash-graph{margin:0}
