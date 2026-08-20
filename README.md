@@ -17,7 +17,7 @@ The ATM reference is the forward swap rate. Bloomberg smile tickers represent ab
 | +100 bp | ENSP |
 | +150 bp | ENSQ |
 
-These are the actual `ENS*` Bloomberg tickers; `K`, `L`, `M`, `N`, `P`, `Q` are the suffixes, not standalone fields.
+These are the actual `ENS*` Bloomberg tickers; `K`, `L`, `M`, `N`, `P`, `Q` are suffixes, not standalone fields.
 
 For an ATM-forward rate `F`, a quote at offset `x` bp is converted to `K = F + x / 10000`.
 
@@ -27,4 +27,6 @@ QuantLib's documented `SABRInterpolation` performs the calibration and `sabrVola
 
 ## Windows
 
-Install the QuantLib Python wheel with `python -m pip install QuantLib`. The Bloomberg Desktop API layer is kept separate so it can enumerate all available maturities and retrieve the forward plus the available `ENS*` smile tickers before passing them to this calibration engine.
+Install the QuantLib Python wheel with `python -m pip install QuantLib`.
+
+The Bloomberg Desktop API layer is kept separate so it can enumerate all available maturities and retrieve the forward plus the available `ENS*` smile tickers before passing them to this calibration engine.
