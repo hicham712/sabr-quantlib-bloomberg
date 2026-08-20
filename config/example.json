@@ -1,0 +1,10 @@
+{
+  "forward_field": "PX_LAST",
+  "maturities": [
+    {
+      "expiry": "5Y",
+      "swaption_security": "ENSI0F05 IIRO Curncy",
+      "forward_security": "REPLACE_WITH_BLOOMBERG_5Y_FORWARD_SWAP_SECURITY"
+    }
+  ]
+}
