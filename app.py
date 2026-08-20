@@ -36,7 +36,7 @@ def snapshot(d,m):
  header=html.Thead(html.Tr([html.Th(x) for x in ["PERIOD","DATE","α","β","ρ","ν","ATM"]]))
  body=html.Tbody([html.Tr([html.Td(label,className="period"),html.Td(item["date"],className="date-muted"),html.Td(f"{pct(item['alpha']):.3f}%"),html.Td(f"{pct(item['beta']):.2f}%"),html.Td(f"{pct(item['rho']):.2f}%"),html.Td(f"{pct(item['nu']):.2f}%"),html.Td(f"{float(item['atm_normal_vol'])*10000:.2f} bp")]) for label,item in rows if item])
  return k,html.Table([header,body],className="param-table")
-def pl(y,h=290): return dict(height=h,paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",font=dict(color=TEXT,size=11),margin=dict(l=48,r=18,t=8,b=42),xaxis=dict(gridcolor=BORDER,zerolinecolor=BORDER),yaxis=dict(gridcolor=BORDER,zerolinecolor=BORDER,title=y),legend=dict(orientation="h",y=1.08,x=0))
+def pl(y,h=290): return dict(height=h,paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",font=dict(color=TEXT,size=13),margin=dict(l=58,r=18,t=10,b=48),xaxis=dict(gridcolor=BORDER,zerolinecolor=BORDER,tickfont=dict(size=11)),yaxis=dict(gridcolor=BORDER,zerolinecolor=BORDER,title=y,tickfont=dict(size=11)),legend=dict(orientation="h",y=1.08,x=0,font=dict(size=11)))
 @app.callback(Output("smile","figure"),Output("alpha","figure"),Output("beta","figure"),Output("rho","figure"),Output("nu","figure"),Output("atm","figure"),Output("atm-move","figure"),Input("date","value"),Input("maturity","value"))
 def graphs(d,m):
  rs=load_data();e=go.Figure()
@@ -50,6 +50,6 @@ def graphs(d,m):
   sm.add_trace(go.Scatter(x=[x["offset_bp"] for x in q],y=[x["market_normal_vol"]*10000 for x in q],mode="markers",name="Bloomberg",marker=dict(size=8)));sm.add_trace(go.Scatter(x=[0],y=[s["atm_normal_vol"]*10000],mode="markers",name="ATM",marker=dict(size=11)));sm.add_trace(go.Scatter(x=xo,y=yv,mode="lines",name="SABR",line=dict(width=2.5,color=ACCENT)));sm.update_layout(**pl("Normal vol (bp)",430),xaxis_title="Strike offset (bp)")
  h=sorted([r for r in rs if r["expiry"]==m],key=lambda r:r["date"]);x=[r["date"] for r in h]
  def p(n):
-  f=go.Figure(go.Scatter(x=x,y=[pct(r[n]) for r in h],mode="lines+markers",line=dict(color=ACCENT,width=2),marker=dict(size=5)));f.update_layout(**pl("%"));return f
- a,b,r,n=[p(z) for z in ["alpha","beta","rho","nu"]];av=[z["atm_normal_vol"]*10000 for z in h];at=go.Figure(go.Scatter(x=x,y=av,mode="lines+markers",line=dict(color=GREEN,width=2),marker=dict(size=5)));at.update_layout(**pl("bp"));mv=[None]+[av[i]-av[i-1] for i in range(1,len(av))];am=go.Figure(go.Bar(x=x,y=mv,marker_color=ACCENT));am.update_layout(**pl("bp"));return sm,a,b,r,n,at,am
+  f=go.Figure(go.Scatter(x=x,y=[pct(r[n]) for r in h],mode="lines+markers",line=dict(color=ACCENT,width=2),marker=dict(size=5),hovertemplate="%{x}<br>%{y:.2f}%<extra></extra>"));f.update_layout(**pl("%"));return f
+ a,b,r,n=[p(z) for z in ["alpha","beta","rho","nu"]];av=[z["atm_normal_vol"]*10000 for z in h];at=go.Figure(go.Scatter(x=x,y=av,mode="lines+markers",line=dict(color=GREEN,width=2),marker=dict(size=5),hovertemplate="%{x}<br>%{y:.2f} bp<extra></extra>"));at.update_layout(**pl("bp"));mv=[None]+[av[i]-av[i-1] for i in range(1,len(av))];am=go.Figure(go.Bar(x=x,y=mv,marker_color=ACCENT,hovertemplate="%{x}<br>%{y:.2f} bp<extra></extra>"));am.update_layout(**pl("bp"));return sm,a,b,r,n,at,am
 if __name__=="__main__": app.run(debug=True)
