@@ -14,10 +14,11 @@ def test_confirmed_bloomberg_ens_mapping():
     }
 
 
-def test_absolute_strikes_are_built_from_forward():
+def test_absolute_strikes_include_bloomberg_atm_point():
     strikes, vols = available_smile_points(
         0.03,
-        {-50.0: 0.40, -25.0: 0.38, 25.0: 0.36, 50.0: None},
+        {-50.0: -3.0, -25.0: -2.0, 25.0: 2.0, 50.0: None},
+        atm_vol_bp=70.0,
     )
-    assert strikes == [0.025, 0.0275, 0.0325]
-    assert vols == [0.40, 0.38, 0.36]
+    assert strikes == [0.025, 0.0275, 0.03, 0.0325]
+    assert vols == [0.0067, 0.0068, 0.0070, 0.0072]
