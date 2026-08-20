@@ -17,8 +17,15 @@ class SABRParameters:
 
 
 class SABRSmile:
-    def __init__(self, interpolation: ql.SABRInterpolation):
+    def __init__(
+        self,
+        interpolation: ql.SABRInterpolation,
+        strikes: Sequence[float],
+        volatilities: Sequence[float],
+    ):
         self._interpolation = interpolation
+        self._strikes = tuple(float(x) for x in strikes)
+        self._volatilities = tuple(float(x) for x in volatilities)
 
     @property
     def alpha(self) -> float:
@@ -38,11 +45,18 @@ class SABRSmile:
 
     @property
     def rms_error(self) -> float:
-        return float(self._interpolation.rmsError())
+        """RMS calibration error computed from the exposed Python API."""
+        errors = [self.volatility(k, allow_extrapolation=False) - v
+                  for k, v in zip(self._strikes, self._volatilities)]
+        return float(sum(e * e for e in errors) / len(errors)) ** 0.5
 
     @property
     def max_error(self) -> float:
-        return float(self._interpolation.maxError())
+        """Maximum absolute calibration error computed from the exposed API."""
+        return max(
+            abs(self.volatility(k, allow_extrapolation=False) - v)
+            for k, v in zip(self._strikes, self._volatilities)
+        )
 
     @property
     def parameters(self) -> SABRParameters:
@@ -98,6 +112,5 @@ def calibrate_sabr(
     if volatility_type is not None:
         args.append(volatility_type)
 
-    # QuantLib-SWIG performs calibration during construction. The Python
-    # SABRInterpolation binding does not expose update() or enableExtrapolation().
-    return SABRSmile(ql.SABRInterpolation(*args))
+    interpolation = ql.SABRInterpolation(*args)
+    return SABRSmile(interpolation, strikes, volatilities)
