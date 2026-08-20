@@ -1,4 +1,3 @@
-"""Small Dash UI for historical Bloomberg SABR smiles."""
 from __future__ import annotations
 import json
 from datetime import date
@@ -6,143 +5,49 @@ from pathlib import Path
 import plotly.graph_objects as go
 from dash import Dash, Input, Output, dcc, html
 from src.sabr import calibrate_sabr
-
-DATA_FILE = Path("output/historical_sabr_5y_weekly.json")
-app = Dash(__name__)
-
-
-def load_payload():
-    if not DATA_FILE.exists():
-        return {"nodes": []}
-    return json.loads(DATA_FILE.read_text(encoding="utf-8"))
-
-
-def load_data():
-    return load_payload().get("nodes", [])
-
-
-def dates(records):
-    return sorted({r["date"] for r in records})
-
-
-def maturity_options(records, selected_date):
-    return sorted({r["expiry"] for r in records if r["date"] == selected_date}, key=lambda x: float(x[:-1]))
-
-
-def pct_param(name, value):
-    return float(value) * 100.0
-
-
-app.layout = html.Div([
-    html.H2("Bloomberg Normal SABR Smile"),
-    html.Div(id="dataset-info"),
-    html.Div([
-        html.Label("Date"), dcc.Dropdown(id="date", clearable=False),
-        html.Label("Maturity"), dcc.Dropdown(id="maturity", clearable=False),
-    ], style={"display": "grid", "gridTemplateColumns": "180px 220px", "gap": "8px 16px", "maxWidth": "450px"}),
-    html.Div(id="parameter-table"),
-    dcc.Graph(id="smile"),
-    html.Div([
-        dcc.Graph(id="alpha"), dcc.Graph(id="beta"), dcc.Graph(id="rho"),
-        dcc.Graph(id="nu"), dcc.Graph(id="atm"), dcc.Graph(id="atm-move"),
-    ], style={"display": "grid", "gridTemplateColumns": "repeat(2, minmax(0, 1fr))"}),
-])
-
-
-@app.callback(Output("date", "options"), Output("date", "value"), Output("dataset-info", "children"), Input("date", "value"))
-def init_date(current):
-    available = dates(load_data())
-    if not available:
-        return [], None, "No historical dataset found."
-    selected = current if current in available else available[-1]
-    payload = load_payload()
-    frequency = payload.get("frequency", "weekly")
-    info = f"Dataset: {available[0]} → {available[-1]} | {frequency} | {len(available)} calibration dates"
-    return [{"label": d, "value": d} for d in available], selected, info
-
-
-@app.callback(Output("maturity", "options"), Output("maturity", "value"), Input("date", "value"))
-def update_maturity(selected_date):
-    opts = maturity_options(load_data(), selected_date)
-    return [{"label": x, "value": x} for x in opts], (opts[0] if opts else None)
-
-
-@app.callback(Output("parameter-table", "children"), Input("date", "value"), Input("maturity", "value"))
-def update_parameter_table(selected_date, maturity):
-    records = sorted((r for r in load_data() if r["expiry"] == maturity), key=lambda r: r["date"])
-    if not selected_date or not maturity or not records:
-        return html.Div()
-    available = [r["date"] for r in records]
-    target = date.fromisoformat(selected_date)
-    def nearest_at_or_before(days):
-        cutoff = target.fromordinal(target.toordinal() - days)
-        eligible = [d for d in available if date.fromisoformat(d) <= cutoff]
-        return eligible[-1] if eligible else None
-    periods = [("Selected", selected_date), ("Last week", nearest_at_or_before(7)), ("Last month", nearest_at_or_before(30))]
-    rows = []
-    for label, d in periods:
-        r = next((x for x in records if x["date"] == d), None)
-        if r:
-            rows.append(html.Tr([
-                html.Td(label), html.Td(d),
-                html.Td(f"{pct_param('alpha', r['alpha']):.3f}%"),
-                html.Td(f"{pct_param('beta', r['beta']):.3f}%"),
-                html.Td(f"{pct_param('rho', r['rho']):.3f}%"),
-                html.Td(f"{pct_param('nu', r['nu']):.3f}%"),
-                html.Td(f"{float(r['atm_normal_vol']) * 10000:.2f} bp"),
-            ]))
-    return html.Table([
-        html.Thead(html.Tr([html.Th(x) for x in ["Period", "Calibration date", "α", "β", "ρ", "ν", "ATM"]])),
-        html.Tbody(rows)
-    ], style={"width": "100%", "borderCollapse": "collapse", "margin": "18px 0", "textAlign": "right"})
-
-
-@app.callback(Output("smile", "figure"), Output("alpha", "figure"), Output("beta", "figure"), Output("rho", "figure"), Output("nu", "figure"), Output("atm", "figure"), Output("atm-move", "figure"), Input("date", "value"), Input("maturity", "value"))
-def update_graphs(selected_date, maturity):
-    records = load_data()
-    empty = go.Figure()
-    if not selected_date or not maturity:
-        return (empty,) * 7
-    selected = next((r for r in records if r["date"] == selected_date and r["expiry"] == maturity), None)
-    smile = go.Figure()
-    if selected:
-        q = selected["quotes"]
-        forward, expiry = float(selected["forward"]), float(selected["expiry_years"])
-        offsets = [float(x["offset_bp"]) for x in q]
-        vols = [float(x["market_normal_vol"]) for x in q]
-        if 0.0 not in offsets:
-            i = next((i for i, x in enumerate(offsets) if x > 0.0), len(offsets))
-            offsets.insert(i, 0.0)
-            vols.insert(i, float(selected["atm_normal_vol"]))
-        strikes = [forward + x / 10000.0 for x in offsets]
-        fitted = calibrate_sabr(forward, expiry, strikes, vols, beta=float(selected["beta"]))
-        plot_offsets = list(range(-150, 151))
-        plot_vols = [fitted.volatility(forward + x / 10000.0, False) * 10000.0 for x in plot_offsets]
-        fitted_atm = fitted.volatility(forward, False) * 10000.0
-        smile.add_trace(go.Scatter(x=[x["offset_bp"] for x in q], y=[x["market_normal_vol"] * 10000 for x in q], mode="markers", name="Bloomberg smile"))
-        smile.add_trace(go.Scatter(x=[0], y=[selected["atm_normal_vol"] * 10000], mode="markers", marker={"size": 9}, name="Bloomberg ATM"))
-        smile.add_trace(go.Scatter(x=plot_offsets, y=plot_vols, mode="lines", name="QuantLib SABR"))
-        smile.add_trace(go.Scatter(x=[0], y=[fitted_atm], mode="markers", marker={"size": 8}, name="QuantLib SABR ATM"))
-        smile.update_layout(title=f"{selected_date} — {maturity} smile", xaxis_title="Strike offset (bp)", yaxis_title="Normal volatility (bp)")
-
-    history = sorted((r for r in records if r["expiry"] == maturity), key=lambda r: r["date"])
-    x = [r["date"] for r in history]
-    def parameter_figure(name, title):
-        fig = go.Figure(go.Scatter(x=x, y=[pct_param(name, r[name]) for r in history], mode="lines+markers", name=name))
-        fig.update_layout(title=title, xaxis_title="Date", yaxis_title="Parameter (%)")
-        return fig
-    alpha = parameter_figure("alpha", f"{maturity} — α")
-    beta = parameter_figure("beta", f"{maturity} — β")
-    rho = parameter_figure("rho", f"{maturity} — ρ")
-    nu = parameter_figure("nu", f"{maturity} — ν")
-    atm_values = [r["atm_normal_vol"] * 10000 for r in history]
-    atm = go.Figure(go.Scatter(x=x, y=atm_values, mode="lines+markers", name="ATM"))
-    atm.update_layout(title=f"{maturity} — ATM normal volatility", xaxis_title="Date", yaxis_title="Normal volatility (bp)")
-    moves = [None] + [atm_values[i] - atm_values[i - 1] for i in range(1, len(atm_values))]
-    atm_move = go.Figure(go.Bar(x=x, y=moves, name="ATM move"))
-    atm_move.update_layout(title=f"{maturity} — ATM normal-vol move", xaxis_title="Date", yaxis_title="Weekly move (bp)")
-    return smile, alpha, beta, rho, nu, atm, atm_move
-
-
-if __name__ == "__main__":
-    app.run(debug=True)
+DATA_FILE=Path("output/historical_sabr_5y_weekly.json")
+app=Dash(__name__,title="SABR Market Dashboard")
+BG="#07111f"; BORDER="#1c2d43"; TEXT="#e7edf5"; MUTED="#8191a7"; ACCENT="#55c2ff"; GREEN="#39d98a"
+def load_payload(): return json.loads(DATA_FILE.read_text(encoding="utf-8")) if DATA_FILE.exists() else {"nodes":[]}
+def load_data(): return load_payload().get("nodes",[])
+def dates(r): return sorted({x["date"] for x in r})
+def mats(r,d): return sorted({x["expiry"] for x in r if x["date"]==d},key=lambda x:float(x[:-1]))
+def pct(v): return float(v)*100
+def card(label,value,sub=""): return html.Div([html.Div(label,className="kpi-label"),html.Div(value,className="kpi-value"),html.Div(sub,className="kpi-sub")],className="kpi")
+def cc(title,id,wide=False): return html.Div([html.Div(title,className="chart-title"),dcc.Graph(id=id,config={"displayModeBar":False})],className="chart-card"+(" chart-wide" if wide else ""))
+app.layout=html.Div([html.Div([html.Div([html.Div("RATES / VOLATILITY",className="eyebrow"),html.H1("SABR Market Dashboard"),html.Div("Bloomberg normal-volatility surface · weekly historical calibration",className="subtitle")]),html.Div("LIVE DATASET",className="status-pill")],className="header"),html.Div([html.Div([html.Label("Calibration date"),dcc.Dropdown(id="date",clearable=False,className="dark-dropdown")],className="control"),html.Div([html.Label("Maturity"),dcc.Dropdown(id="maturity",clearable=False,className="dark-dropdown")],className="control"),html.Div(id="dataset-info",className="dataset-info")],className="controls"),html.Div(id="kpis",className="kpi-row"),html.Div([html.Div("SABR snapshot",className="section-title"),html.Div(id="parameter-table")],className="panel table-panel"),html.Div([cc("SMILE · MARKET VS SABR","smile",True),cc("ALPHA","alpha"),cc("BETA","beta"),cc("RHO","rho"),cc("NU","nu"),cc("ATM NORMAL VOLATILITY","atm"),cc("ATM WEEKLY MOVE","atm-move")],className="charts")],className="app-shell")
+@app.callback(Output("date","options"),Output("date","value"),Output("dataset-info","children"),Input("date","value"))
+def init_date(cur):
+ d=dates(load_data())
+ if not d:return [],None,"NO DATA"
+ s=cur if cur in d else d[-1];p=load_payload();return [{"label":x,"value":x} for x in d],s,f"{p.get('frequency','weekly').upper()} · {len(d)} calibration dates · {d[0]} → {d[-1]}"
+@app.callback(Output("maturity","options"),Output("maturity","value"),Input("date","value"))
+def update_maturity(d):
+ o=mats(load_data(),d);return [{"label":x,"value":x} for x in o],o[0] if o else None
+@app.callback(Output("kpis","children"),Output("parameter-table","children"),Input("date","value"),Input("maturity","value"))
+def snapshot(d,m):
+ rs=sorted([r for r in load_data() if r["expiry"]==m],key=lambda r:r["date"]);r=next((x for x in rs if x["date"]==d),None)
+ if not r:return [],html.Div("No calibration available",className="empty")
+ t=date.fromisoformat(d)
+ def prior(n):
+  c=t.toordinal()-n;z=[x for x in rs if date.fromisoformat(x["date"]).toordinal()<=c];return z[-1] if z else None
+ rows=[("Selected",r),("Last week",prior(7)),("Last month",prior(30))]
+ k=[card("ATM NORMAL VOL",f"{float(r['atm_normal_vol'])*10000:.2f} bp",m),card("ALPHA",f"{pct(r['alpha']):.3f}%"),card("BETA",f"{pct(r['beta']):.2f}%"),card("RHO",f"{pct(r['rho']):.2f}%"),card("NU",f"{pct(r['nu']):.2f}%")]
+ table=html.Table([html.Thead(html.Tr([html.Th(x) for x in ["PERIOD","DATE","α","β","ρ","ν","ATM"]])),html.Tbody([html.Tr([html.Td(l,className="period"),html.Td(x["date"],className="date-muted"),html.Td(f"{pct(x['alpha']):.3f}%"),html.Td(f"{pct(x['beta']):.2f}%"),html.Td(f"{pct(x['rho']):.2f}%"),html.Td(f"{pct(x['nu']):.2f}%"),html.Td(f"{float(x['atm_normal_vol'])*10000:.2f} bp")]) for l,x in rows if x]),className="param-table")
+ return k,table
+def pl(y,h=290):return dict(height=h,paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",font=dict(color=TEXT,size=11),margin=dict(l=48,r=18,t=8,b=42),xaxis=dict(gridcolor=BORDER,zerolinecolor=BORDER),yaxis=dict(gridcolor=BORDER,zerolinecolor=BORDER,title=y),legend=dict(orientation="h",y=1.08,x=0))
+@app.callback(Output("smile","figure"),Output("alpha","figure"),Output("beta","figure"),Output("rho","figure"),Output("nu","figure"),Output("atm","figure"),Output("atm-move","figure"),Input("date","value"),Input("maturity","value"))
+def graphs(d,m):
+ rs=load_data();e=go.Figure()
+ if not d or not m:return(e,)*7
+ s=next((r for r in rs if r["date"]==d and r["expiry"]==m),None);sm=go.Figure()
+ if s:
+  q=s["quotes"];f=float(s["forward"]);t=float(s["expiry_years"]);o=[float(x["offset_bp"]) for x in q];v=[float(x["market_normal_vol"]) for x in q]
+  if 0 not in o:i=next((i for i,x in enumerate(o) if x>0),len(o));o.insert(i,0);v.insert(i,float(s["atm_normal_vol"]))
+  fit=calibrate_sabr(f,t,[f+x/10000 for x in o],v,beta=float(s["beta"]));xo=list(range(-150,151));yv=[fit.volatility(f+x/10000,False)*10000 for x in xo]
+  sm.add_trace(go.Scatter(x=[x["offset_bp"] for x in q],y=[x["market_normal_vol"]*10000 for x in q],mode="markers",name="Bloomberg",marker=dict(size=8)));sm.add_trace(go.Scatter(x=[0],y=[s["atm_normal_vol"]*10000],mode="markers",name="ATM",marker=dict(size=11)));sm.add_trace(go.Scatter(x=xo,y=yv,mode="lines",name="SABR",line=dict(width=2.5,color=ACCENT)));sm.update_layout(**pl("Normal vol (bp)",430),xaxis_title="Strike offset (bp)")
+ h=sorted([r for r in rs if r["expiry"]==m],key=lambda r:r["date"]);x=[r["date"] for r in h]
+ def p(n):
+  f=go.Figure(go.Scatter(x=x,y=[pct(r[n]) for r in h],mode="lines+markers",line=dict(color=ACCENT,width=2),marker=dict(size=5)));f.update_layout(**pl("%"));return f
+ a,b,r,n=[p(z) for z in ["alpha","beta","rho","nu"]];av=[z["atm_normal_vol"]*10000 for z in h];at=go.Figure(go.Scatter(x=x,y=av,mode="lines+markers",line=dict(color=GREEN,width=2),marker=dict(size=5)));at.update_layout(**pl("bp"));mv=[None]+[av[i]-av[i-1] for i in range(1,len(av))];am=go.Figure(go.Bar(x=x,y=mv,marker_color=ACCENT));am.update_layout(**pl("bp"));return sm,a,b,r,n,at,am
+if __name__=="__main__":app.run(debug=True)
