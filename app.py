@@ -32,8 +32,8 @@ def snapshot(d,m):
  def prior(n):
   c=t.toordinal()-n;z=[x for x in rs if date.fromisoformat(x["date"]).toordinal()<=c];return z[-1] if z else None
  rows=[("Selected",r),("Last week",prior(7)),("Last month",prior(30))]
- k=[card("ATM NORMAL VOL",f"{float(r['atm_normal_vol'])*10000:.2f} bp",m),card("ALPHA",f"{pct(r['alpha']):.3f}%"),card("BETA",f"{pct(r['beta']):.2f}%"),card("RHO",f"{pct(r['rho']):.2f}%"),card("NU",f"{pct(r['nu']):.2f}%")]
- header=html.Thead(html.Tr([html.Th(x) for x in ["PERIOD","DATE","α","β","ρ","ν","ATM"]]))
+ k=[card("ATM NORMAL VOL",f"{float(r['atm_normal_vol'])*10000:.2f} bp",m),card("Alpha",f"{pct(r['alpha']):.3f}%"),card("Beta",f"{pct(r['beta']):.2f}%"),card("Rho",f"{pct(r['rho']):.2f}%"),card("Nu",f"{pct(r['nu']):.2f}%")]
+ header=html.Thead(html.Tr([html.Th(x) for x in ["PERIOD","DATE","Alpha","Beta","Rho","Nu","ATM"]]))
  body=html.Tbody([html.Tr([html.Td(label,className="period"),html.Td(item["date"],className="date-muted"),html.Td(f"{pct(item['alpha']):.3f}%"),html.Td(f"{pct(item['beta']):.2f}%"),html.Td(f"{pct(item['rho']):.2f}%"),html.Td(f"{pct(item['nu']):.2f}%"),html.Td(f"{float(item['atm_normal_vol'])*10000:.2f} bp")]) for label,item in rows if item])
  return k,html.Table([header,body],className="param-table")
 def pl(y,h=290): return dict(height=h,paper_bgcolor="rgba(0,0,0,0)",plot_bgcolor="rgba(0,0,0,0)",font=dict(color=TEXT,size=13),margin=dict(l=58,r=18,t=10,b=48),xaxis=dict(gridcolor=BORDER,zerolinecolor=BORDER,tickfont=dict(size=11)),yaxis=dict(gridcolor=BORDER,zerolinecolor=BORDER,title=y,tickfont=dict(size=11)),legend=dict(orientation="h",y=1.08,x=0,font=dict(size=11)))
