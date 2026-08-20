@@ -12,7 +12,7 @@ from typing import Iterable, Mapping
 
 import blpapi
 
-from .surface import BLOOMBERG_FIELDS, BloombergQuoteSet
+from .surface import BLOOMBERG_FIELDS
 
 
 @dataclass(frozen=True)
@@ -28,12 +28,7 @@ class BloombergQuoteSet:
 class BloombergClient:
     """Thin synchronous wrapper around Bloomberg Desktop API."""
 
-    def __init__(
-        self,
-        host: str = "localhost",
-        port: int = 8194,
-        service: str = "//blp/refdata",
-    ) -> None:
+    def __init__(self, host: str = "localhost", port: int = 8194, service: str = "//blp/refdata") -> None:
         options = blpapi.SessionOptions()
         options.setServerHost(host)
         options.setServerPort(port)
@@ -60,11 +55,7 @@ class BloombergClient:
     def __exit__(self, exc_type, exc, tb) -> None:
         self.stop()
 
-    def reference_data(
-        self,
-        securities: Iterable[str],
-        fields: Iterable[str],
-    ) -> dict[str, dict[str, object]]:
+    def reference_data(self, securities: Iterable[str], fields: Iterable[str]) -> dict[str, dict[str, object]]:
         """Request reference data and return security -> field -> value."""
         if self._service is None:
             raise RuntimeError("Bloomberg session is not started")
@@ -92,15 +83,14 @@ class BloombergClient:
                     field_data = row.getElement("fieldData")
                     values: dict[str, object] = {}
                     for field in fields:
-                        if field_data.hasElement(field):
-                            values[field] = self._element_value(field_data.getElement(field))
-                        else:
-                            values[field] = None
+                        values[field] = (
+                            self._element_value(field_data.getElement(field))
+                            if field_data.hasElement(field)
+                            else None
+                        )
                     result[security] = values
-
             if event.eventType() == blpapi.Event.RESPONSE:
                 break
-
         return result
 
     @staticmethod
@@ -121,16 +111,13 @@ class BloombergClient:
         forward_security: str,
         forward_field: str,
     ) -> BloombergQuoteSet | None:
-        """Fetch one maturity's forward and ENSH..ENSQ smile quotes.
+        """Fetch forward plus ENSH..ENSQ quotes for one maturity.
 
-        Missing/invalid quotes are retained as unavailable. A maturity with
-        fewer than three valid smile quotes is skipped by returning None.
+        The forward is intentionally sourced from a separate security/field:
+        the project convention is ATM-forward swap data, not a swaption quote.
         """
         fields = [forward_field, *BLOOMBERG_FIELDS.values()]
-        data = self.reference_data(
-            [swaption_security, forward_security],
-            fields,
-        )
+        data = self.reference_data([swaption_security, forward_security], fields)
         forward_value = data.get(forward_security, {}).get(forward_field)
         if not isinstance(forward_value, (int, float)) or forward_value <= 0.0:
             return None
@@ -140,9 +127,9 @@ class BloombergClient:
             value = data.get(swaption_security, {}).get(field)
             if isinstance(value, (int, float)) and value > 0.0:
                 quotes[offset_bp] = float(value)
-
         if len(quotes) < 3:
             return None
+
         return BloombergQuoteSet(
             security=swaption_security,
             expiry=expiry,
