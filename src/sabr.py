@@ -51,9 +51,6 @@ class SABRSmile:
         return SABRParameters(self.alpha, self.beta, self.rho, self.nu)
 
     def volatility(self, strike: float, allow_extrapolation: bool = False) -> float:
-        # QuantLib's SABRInterpolation inherits Interpolation and exposes
-        # extrapolation as an argument to operator(), not as
-        # enableExtrapolation().
         return float(self._interpolation(strike, allow_extrapolation))
 
 
@@ -65,9 +62,6 @@ def _shifted_lognormal_volatility_type():
     shifted = getattr(ql, "ShiftedLognormal", None)
     if shifted is not None:
         return shifted
-    # Older Python bindings do not expose VolatilityType. The SABR
-    # interpolation constructor in those versions ends at ``shift`` and does
-    # not need a volatility-type argument. This sentinel is handled below.
     return None
 
 
@@ -85,8 +79,12 @@ def calibrate_sabr(
 ) -> SABRSmile:
     """Calibrate alpha, rho and nu with QuantLib SABRInterpolation.
 
-    Bloomberg quotes are Black/lognormal implied volatilities. The SABR
-    interpolation uses beta fixed at the supplied value (0.5 by default).
+    Bloomberg quotes are Black/lognormal implied volatilities. Beta is fixed
+    at the supplied value (0.5 by default).
+
+    QuantLib-SWIG's SafeSABRInterpolation constructor performs the initial
+    ``update()`` internally. ``update()`` is intentionally not called here:
+    the Python wrapper does not expose that method on SABRInterpolation.
     """
     if forward <= 0.0 or expiry <= 0.0:
         raise ValueError("forward and expiry must be positive")
@@ -98,25 +96,24 @@ def calibrate_sabr(
         raise ValueError("strikes and volatilities must be positive")
 
     if alpha is None:
-        atm_vol = float(volatilities[min(range(len(strikes)), key=lambda i: abs(strikes[i] - forward))])
+        atm_vol = float(
+            volatilities[min(range(len(strikes)), key=lambda i: abs(strikes[i] - forward))]
+        )
         alpha = max(atm_vol * forward ** (1.0 - beta), 1.0e-8)
 
-    end_criteria = ql.EndCriteria(1000, 100, 1.0e-10, 1.0e-10, 1.0e-10)
     args = [
         list(strikes), list(volatilities), float(expiry), float(forward),
         float(alpha), float(beta), float(nu), float(rho),
         False, True, False, False, bool(vega_weighted),
-        end_criteria, None, float(error_accept), False, 100, 0.0,
+        ql.EndCriteria(1000, 100, 1.0e-10, 1.0e-10, 1.0e-10),
+        None, float(error_accept), False, 100, 0.0,
     ]
 
-    # QuantLib-SWIG added the explicit volatility-type argument to
-    # SABRInterpolation after older bindings. Use it only when the installed
-    # binding exposes the enum; otherwise use the documented legacy
-    # constructor ending at ``shift``.
+    # Current QuantLib-SWIG exposes VolatilityType as the final constructor
+    # argument. Older bindings end at shift, so only append it when available.
     volatility_type = _shifted_lognormal_volatility_type()
     if volatility_type is not None:
         args.append(volatility_type)
 
     interpolation = ql.SABRInterpolation(*args)
-    interpolation.update()
     return SABRSmile(interpolation)
