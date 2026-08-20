@@ -53,8 +53,23 @@ class SABRSmile:
     def volatility(self, strike: float, allow_extrapolation: bool = False) -> float:
         return float(self._interpolation(strike, allow_extrapolation))
 
-    def strikes_volatilities(self, strikes: Sequence[float]) -> list[float]:
-        return [self.volatility(strike) for strike in strikes]
+
+def _shifted_lognormal_volatility_type():
+    """Return the enum exposed by the installed QuantLib Python bindings.
+
+    QuantLib wheels have exposed this enum under different namespaces across
+    releases. Prefer ``VolatilityType`` when available and fall back to the
+    legacy ``VolatilityType.ShiftedLognormal`` location if necessary.
+    """
+    volatility_type = getattr(ql, "VolatilityType", None)
+    if volatility_type is not None and hasattr(volatility_type, "ShiftedLognormal"):
+        return volatility_type.ShiftedLognormal
+    shifted = getattr(ql, "ShiftedLognormal", None)
+    if shifted is not None:
+        return shifted
+    # Recent QuantLib wheels expose the SABR interpolation volatility type as
+    # a plain enum value accepted by the final constructor argument.
+    return 0
 
 
 def calibrate_sabr(
@@ -69,55 +84,27 @@ def calibrate_sabr(
     vega_weighted: bool = True,
     error_accept: float = 1.0e-8,
 ) -> SABRSmile:
-    """Calibrate alpha, rho and nu with beta fixed using QuantLib.
-
-    Bloomberg quotes are expected to be Black/lognormal implied volatilities.
-    QuantLib's SABRInterpolation performs the multidimensional optimization;
-    no separate scipy/Hagan implementation is maintained in this project.
-    """
-    if forward <= 0.0:
-        raise ValueError("forward must be positive")
-    if expiry <= 0.0:
-        raise ValueError("expiry must be positive")
-    if len(strikes) != len(volatilities):
-        raise ValueError("strikes and volatilities must have the same length")
-    if len(strikes) < 3:
-        raise ValueError("at least three smile points are required")
+    """Calibrate alpha, rho and nu with beta fixed using QuantLib."""
+    if forward <= 0.0 or expiry <= 0.0:
+        raise ValueError("forward and expiry must be positive")
+    if len(strikes) != len(volatilities) or len(strikes) < 3:
+        raise ValueError("matching strikes/volatilities with at least 3 points are required")
     if not 0.0 <= beta <= 1.0:
         raise ValueError("beta must lie in [0, 1]")
-    if any(k <= 0.0 for k in strikes):
-        raise ValueError("all strikes must be positive")
-    if any(v <= 0.0 for v in volatilities):
-        raise ValueError("all volatilities must be positive")
+    if any(k <= 0.0 for k in strikes) or any(v <= 0.0 for v in volatilities):
+        raise ValueError("strikes and volatilities must be positive")
 
     if alpha is None:
-        atm_vol = float(
-            volatilities[min(range(len(strikes)), key=lambda i: abs(strikes[i] - forward))]
-        )
+        atm_vol = float(volatilities[min(range(len(strikes)), key=lambda i: abs(strikes[i] - forward))])
         alpha = max(atm_vol * forward ** (1.0 - beta), 1.0e-8)
 
     end_criteria = ql.EndCriteria(1000, 100, 1.0e-10, 1.0e-10, 1.0e-10)
     interpolation = ql.SABRInterpolation(
-        list(strikes),
-        list(volatilities),
-        float(expiry),
-        float(forward),
-        float(alpha),
-        float(beta),
-        float(nu),
-        float(rho),
-        False,  # alpha calibrated
-        True,   # beta fixed at 0.5
-        False,  # nu calibrated
-        False,  # rho calibrated
-        bool(vega_weighted),
-        end_criteria,
-        None,
-        float(error_accept),
-        False,
-        100,
-        0.0,
-        ql.VolatilityType.ShiftedLognormal,
+        list(strikes), list(volatilities), float(expiry), float(forward),
+        float(alpha), float(beta), float(nu), float(rho),
+        False, True, False, False, bool(vega_weighted),
+        end_criteria, None, float(error_accept), False, 100, 0.0,
+        _shifted_lognormal_volatility_type(),
     )
     interpolation.enableExtrapolation()
     interpolation.update()
