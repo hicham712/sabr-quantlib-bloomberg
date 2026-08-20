@@ -9,4 +9,4 @@ def test_filters_missing_forward_and_sparse_smiles():
     bad_smile = MaturityQuotes(15, "EUSA0115 BGN Curncy", 2.5, smile, {s.ticker: 1.0})
 
     result = available_maturities([good, bad_forward, bad_smile], minimum_smile_points=3)
-    assert [q.years for q in result] == [5, 15]
+    assert [q.years for q in result] == [5]
