@@ -17,6 +17,8 @@ The ATM reference is the forward swap rate. Bloomberg smile tickers represent ab
 | +100 bp | ENSP |
 | +150 bp | ENSQ |
 
+These are the actual `ENS*` Bloomberg tickers; `K`, `L`, `M`, `N`, `P`, `Q` are the suffixes, not standalone fields.
+
 For an ATM-forward rate `F`, a quote at offset `x` bp is converted to `K = F + x / 10000`.
 
 ## SABR calibration
