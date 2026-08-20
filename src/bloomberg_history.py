@@ -1,6 +1,6 @@
 """Historical Bloomberg Desktop API support."""
 from __future__ import annotations
-from datetime import date
+from datetime import date, datetime
 from typing import Iterable
 import blpapi
 
@@ -20,6 +20,14 @@ class BloombergHistoryClient:
     def __exit__(self, *args): self.close()
     def close(self):
         if self._session is not None: self._session.stop(); self._session = None
+
+    @staticmethod
+    def _date_string(value) -> str:
+        if isinstance(value, datetime):
+            value = value.date()
+        if isinstance(value, date):
+            return value.isoformat()
+        return str(value).split("T", 1)[0]
 
     def historical(self, securities: Iterable[str], field: str, start: date, end: date) -> dict[str, dict[str, float]]:
         service = self._session.getService("//blp/refdata")
@@ -42,5 +50,5 @@ class BloombergHistoryClient:
                     if row.hasElement("date") and row.hasElement(field):
                         value = row.getElement(field).getValue()
                         if value is not None:
-                            result.setdefault(security, {})[row.getElementAsDatetime("date").date().isoformat()] = float(value)
+                            result.setdefault(security, {})[self._date_string(row.getElementAsDatetime("date"))] = float(value)
             if event.eventType() == blpapi.Event.RESPONSE: return result
