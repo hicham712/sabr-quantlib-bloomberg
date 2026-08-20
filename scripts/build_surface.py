@@ -37,23 +37,25 @@ def main() -> None:
                 print(f"{expiry:>4}: skipped — forward={forward!r}, ATM={atm!r}")
                 continue
             valid = absolute_volatilities(float(atm), raw_addons)
-            print(f"{expiry:>4}  F={float(forward):.8f}  ATM={float(atm):.4f} bp  quotes={len(valid)}/8")
+            print(f"{expiry:>4}  F={float(forward):.8f}  ATM={float(atm):.4f} bp  quotes={len(valid) + 1}/9")
             print("       offset(bp)  add-on(bp)  abs-normal-vol(bp)")
             for offset in sorted(valid):
                 print(f"       {offset:>10.0f}  {float(raw_addons[offset]):>10.4f}  {10_000.0*valid[offset]:>18.4f}")
+            print(f"       {0:>10.0f}  {0.0:>10.4f}  {float(atm):>18.4f}  <- ATM")
             strikes, vols = available_smile_points(float(forward), raw_addons, float(atm))
             if len(strikes) < 3:
-                print("       skipped: fewer than 3 valid quotes")
+                print("       skipped: fewer than 3 valid calibration points")
                 continue
             smile = calibrate_sabr(float(forward), float(y), strikes, vols, beta=0.5)
             p = smile.parameters
             print(f"       SABR-Normal: alpha={p.alpha:.8f} beta={p.beta:.4f} rho={p.rho:.6f} nu={p.nu:.6f} rms={smile.rms_error:.3e}")
-            quotes = []
+            quotes = [{"offset_bp": 0.0, "strike": float(forward), "market_normal_vol": float(atm) / 10_000.0, "sabr_normal_vol": smile.volatility(float(forward))}]
             for offset in STRIKE_OFFSETS_BP:
                 if offset not in valid:
                     continue
                 strike = float(forward) + offset / 10_000.0
                 quotes.append({"offset_bp": offset, "strike": strike, "market_normal_vol": valid[offset], "sabr_normal_vol": smile.volatility(strike)})
+            quotes.sort(key=lambda q: q["offset_bp"])
             nodes.append({"expiry": expiry, "expiry_years": float(y), "forward": float(forward), "atm_normal_vol": float(atm) / 10_000.0, "alpha": p.alpha, "beta": p.beta, "rho": p.rho, "nu": p.nu, "rms_error": smile.rms_error, "max_error": smile.max_error, "quotes": quotes})
 
     if args.output_json:
