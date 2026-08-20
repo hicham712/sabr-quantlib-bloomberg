@@ -74,27 +74,57 @@ def update_parameter_table(selected_date, maturity):
         return html.Div()
     available = [r["date"] for r in records]
     target = date.fromisoformat(selected_date)
+
     def nearest_at_or_before(days):
         cutoff = target.fromordinal(target.toordinal() - days)
         eligible = [d for d in available if date.fromisoformat(d) <= cutoff]
         return eligible[-1] if eligible else None
-    periods = [("Selected", selected_date), ("Last week", nearest_at_or_before(7)), ("Last month", nearest_at_or_before(30))]
+
+    periods = [
+        ("Selected", selected_date),
+        ("Last week", nearest_at_or_before(7)),
+        ("Last month", nearest_at_or_before(30)),
+    ]
     rows = []
     for label, d in periods:
         r = next((x for x in records if x["date"] == d), None)
         if r:
             rows.append(html.Tr([
-                html.Td(label), html.Td(d),
-                html.Td(f"{pct_param('alpha', r['alpha']):.3f}%"),
-                html.Td(f"{pct_param('beta', r['beta']):.3f}%"),
-                html.Td(f"{pct_param('rho', r['rho']):.3f}%"),
-                html.Td(f"{pct_param('nu', r['nu']):.3f}%"),
-                html.Td(f"{float(r['atm_normal_vol']) * 10000:.2f} bp"),
+                html.Td(label, style={"fontWeight": "600", "padding": "12px 18px", "textAlign": "left"}),
+                html.Td(d, style={"padding": "12px 18px", "color": "#666"}),
+                html.Td(f"{pct_param('alpha', r['alpha']):.3f}%", style={"padding": "12px 18px"}),
+                html.Td(f"{pct_param('beta', r['beta']):.3f}%", style={"padding": "12px 18px"}),
+                html.Td(f"{pct_param('rho', r['rho']):.3f}%", style={"padding": "12px 18px"}),
+                html.Td(f"{pct_param('nu', r['nu']):.3f}%", style={"padding": "12px 18px"}),
+                html.Td(f"{float(r['atm_normal_vol']) * 10000:.2f} bp", style={"padding": "12px 18px"}),
             ]))
-    return html.Table([
-        html.Thead(html.Tr([html.Th(x) for x in ["Period", "Calibration date", "α", "β", "ρ", "ν", "ATM"]])),
-        html.Tbody(rows)
-    ], style={"width": "100%", "borderCollapse": "collapse", "margin": "18px 0", "textAlign": "right"})
+
+    header = html.Tr([
+        html.Th("Period", style={"padding": "12px 18px", "textAlign": "left"}),
+        html.Th("Calibration date", style={"padding": "12px 18px", "textAlign": "left"}),
+        html.Th("α", style={"padding": "12px 18px"}),
+        html.Th("β", style={"padding": "12px 18px"}),
+        html.Th("ρ", style={"padding": "12px 18px"}),
+        html.Th("ν", style={"padding": "12px 18px"}),
+        html.Th("ATM", style={"padding": "12px 18px"}),
+    ])
+    return html.Div([
+        html.H4(f"SABR parameters — {maturity}", style={"margin": "20px 0 10px"}),
+        html.Table([
+            html.Thead(header),
+            html.Tbody(rows),
+        ], style={
+            "width": "100%",
+            "borderCollapse": "separate",
+            "borderSpacing": "0",
+            "backgroundColor": "white",
+            "border": "1px solid #e5e7eb",
+            "borderRadius": "10px",
+            "overflow": "hidden",
+            "boxShadow": "0 1px 3px rgba(0,0,0,0.06)",
+            "textAlign": "right",
+        }),
+    ], style={"margin": "18px 0 24px"})
 
 
 @app.callback(Output("smile", "figure"), Output("alpha", "figure"), Output("beta", "figure"), Output("rho", "figure"), Output("nu", "figure"), Output("atm", "figure"), Output("atm-move", "figure"), Input("date", "value"), Input("maturity", "value"))
