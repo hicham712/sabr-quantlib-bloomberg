@@ -6,6 +6,7 @@ from typing import Mapping
 
 import QuantLib as ql
 
+# Bloomberg tickers for absolute strike offsets from the ATM-forward swap rate.
 BLOOMBERG_FIELDS: Mapping[float, str] = {
     -150.0: "ENSH", -100.0: "ENSI", -50.0: "ENSK", -25.0: "ENSL",
     25.0: "ENSM", 50.0: "ENSN", 100.0: "ENSP", 150.0: "ENSQ",
@@ -29,6 +30,7 @@ class SABRResult:
 
 
 def strikes_from_forward(forward: float, offsets_bp: list[float]) -> list[float]:
+    """Convert absolute bp offsets into strikes around the ATM forward."""
     if forward <= 0.0:
         raise ValueError("forward must be positive for lognormal SABR")
     return [forward + x / 10_000.0 for x in offsets_bp]
@@ -40,18 +42,18 @@ def calibrate_sabr(
     quotes_by_offset: Mapping[float, float | None],
     config: SABRConfig = SABRConfig(),
 ) -> SABRResult:
-    """Calibrate alpha, rho and nu with QuantLib SABRInterpolation; beta is fixed."""
+    """Calibrate alpha, rho and nu with QuantLib SABRInterpolation; beta fixed."""
     if expiry <= 0.0:
         raise ValueError("expiry must be positive")
     points = sorted(
-        (float(k), float(v)) for k, v in quotes_by_offset.items()
-        if v is not None and float(v) > 0.0
+        (float(offset), float(vol))
+        for offset, vol in quotes_by_offset.items()
+        if vol is not None and float(vol) > 0.0
     )
     if len(points) < 3:
         raise ValueError("at least three valid smile quotes are required")
-    offsets = [x[0] for x in points]
-    strikes = strikes_from_forward(forward, offsets)
-    vols = [x[1] for x in points]
+    strikes = strikes_from_forward(forward, [p[0] for p in points])
+    vols = [p[1] for p in points]
     if any(k <= 0.0 for k in strikes):
         raise ValueError("all strikes must be positive for lognormal SABR")
 
@@ -68,6 +70,7 @@ def calibrate_sabr(
 
 
 def sabr_volatility(forward: float, strike: float, expiry: float, result: SABRResult) -> float:
+    """Evaluate the calibrated SABR Black/lognormal volatility with QuantLib."""
     return float(ql.sabrVolatility(
         strike, forward, expiry, result.alpha, result.beta, result.nu, result.rho
     ))
