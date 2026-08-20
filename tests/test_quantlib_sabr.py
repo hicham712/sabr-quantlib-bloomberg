@@ -16,10 +16,7 @@ def test_quantlib_calibration_reprices_quotes():
     forward, expiry = 0.03, 5.0
     alpha, beta, rho, nu = 0.02, 0.5, -0.25, 0.35
     offsets = [-150, -100, -50, -25, 25, 50, 100, 150]
-    quotes = {
-        offset: ql.sabrVolatility(forward + offset / 10000.0, forward, expiry, alpha, beta, nu, rho)
-        for offset in offsets
-    }
+    quotes = {offset: ql.sabrVolatility(forward + offset / 10000.0, forward, expiry, alpha, beta, nu, rho) for offset in offsets}
     result = calibrate_sabr(forward, expiry, quotes)
     assert result.beta == pytest.approx(beta)
     for offset, market_vol in quotes.items():
