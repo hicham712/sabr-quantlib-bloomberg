@@ -14,17 +14,16 @@ class QuotePoint:
     volatility: float
 
 
-# Keep this mapping isolated: Bloomberg field names can differ by screen/index.
-# The user-confirmed offsets are the source of truth for the surface convention.
+# User-confirmed Bloomberg convention for the smile columns.
 BLOOMBERG_FIELDS: Mapping[float, str] = {
     -150.0: "ENSH",
     -100.0: "ENSI",
-    -50.0: "ENSJ",
-    -25.0: "K",
-    25.0: "L",
-    50.0: "M",
-    100.0: "N",
-    150.0: "P",
+    -50.0: "K",
+    -25.0: "L",
+    25.0: "M",
+    50.0: "N",
+    100.0: "P",
+    150.0: "Q",
 }
 
 
