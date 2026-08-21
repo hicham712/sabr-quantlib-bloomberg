@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 from pathlib import Path
+import numpy as np
 import plotly.graph_objects as go
 from dash import Dash,Input,Output,dcc,html
 from src.sabr import calibrate_sabr
@@ -12,16 +13,12 @@ def D():
 def pct(x):return float(x)*100
 def opts(v):return [{'label':x,'value':x} for x in v]
 def unique(n,k):
- vals={x.get(k) for x in n if x.get(k) is not None}
- return sorted(vals,key=lambda x:float(str(x).rstrip('Y')))
+ vals={x.get(k) for x in n if x.get(k) is not None};return sorted(vals,key=lambda x:float(str(x).rstrip('Y')))
 def normalized_nodes():
  out=[]
  for x in D():
   y=dict(x)
-  # Backward compatibility with datasets generated before swap_tenor was added.
-  # Those files were 10Y swap-tenor data.
-  if y.get('swap_tenor') is None:
-   y['swap_tenor']='10Y';y['swap_tenor_years']=10.0
+  if y.get('swap_tenor') is None:y['swap_tenor']='10Y';y['swap_tenor_years']=10.0
   out.append(y)
  return out
 def layout(y,h=300):return dict(height=h,paper_bgcolor='rgba(0,0,0,0)',plot_bgcolor='rgba(0,0,0,0)',font=dict(color=T,size=13),margin=dict(l=55,r=15,t=10,b=45),xaxis=dict(gridcolor=B,zerolinecolor=B),yaxis=dict(gridcolor=B,zerolinecolor=B,title=y),legend=dict(orientation='h',y=1.08,x=0))
@@ -43,7 +40,10 @@ def graphs(d,es,ts):
  for j,(e,t) in enumerate((e,t) for e in es for t in ts):
   s=next((x for x in n if x['date']==d and x['expiry']==e and x['swap_tenor']==t),None);col=C[j%len(C)]
   if s:
-   q=s['quotes'];o=[float(x['offset_bp']) for x in q];v=[float(x['market_normal_vol']) for x in q];f=float(s['forward']);fit=calibrate_sabr(f,float(s['expiry_years']),[f+x/10000 for x in o]+[f],v+[float(s['atm_normal_vol'])],beta=.5);xo=list(range(-150,151));sm.add_trace(go.Scatter(x=xo,y=[fit.volatility(f+x/10000,False)*10000 for x in xo],name=f'{e} x {t}',line=dict(color=col,width=2.5)));sm.add_trace(go.Scatter(x=o,y=[x['market_normal_vol']*10000 for x in q],mode='markers',name=f'{e} x {t} BBG',marker=dict(color=col,size=7),showlegend=False))
+   q=s['quotes'];o=np.array([float(x['offset_bp']) for x in q]);v=[float(x['market_normal_vol']) for x in q];f=float(s['forward']);strikes=[f+x/10000 for x in o];fit=calibrate_sabr(f,float(s['expiry_years']),strikes+[f],v+[float(s['atm_normal_vol'])],beta=.5)
+   # Plot only inside the actual calibrated strike domain. QuantLib refuses extrapolation.
+   xmin,xmax=float(o.min()),float(o.max());xo=np.linspace(xmin,xmax,301);ym=[fit.volatility(f+x/10000,False)*10000 for x in xo]
+   sm.add_trace(go.Scatter(x=xo,y=ym,name=f'{e} x {t}',line=dict(color=col,width=2.5)));sm.add_trace(go.Scatter(x=o,y=[x['market_normal_vol']*10000 for x in q],mode='markers',name=f'{e} x {t} BBG',marker=dict(color=col,size=7),showlegend=False));sm.add_trace(go.Scatter(x=[0],y=[float(s['atm_normal_vol'])*10000],mode='markers',name=f'{e} x {t} ATM',marker=dict(color=col,size=10,symbol='diamond'),showlegend=False))
   h=sorted([x for x in n if x['expiry']==e and x['swap_tenor']==t],key=lambda x:x['date']);xs=[x['date'] for x in h]
   for k in ['alpha','beta','rho','nu']:hist[k].add_trace(go.Scatter(x=xs,y=[pct(x[k]) for x in h],name=f'{e} x {t}',line=dict(color=col)))
   av=[x['atm_normal_vol']*10000 for x in h];hist['atm'].add_trace(go.Scatter(x=xs,y=av,name=f'{e} x {t}',line=dict(color=col)));hist['move'].add_trace(go.Bar(x=xs,y=[None]+[av[i]-av[i-1] for i in range(1,len(av))],name=f'{e} x {t}',marker_color=col,opacity=.65))
